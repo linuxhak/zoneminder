@@ -22,6 +22,9 @@
 #include <arpa/inet.h>
 #include <glob.h>
 #include <cinttypes>
+#include <unistd.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
 
 #include "zm.h"
 #include "zm_db.h"
@@ -1289,6 +1292,47 @@ bool Monitor::CheckSignal(const Image *image) {
   return true;
 } // end bool Monitor::CheckSignal(const Image *image)
 
+void Monitor::DoEventExternalNotification() {
+  pid_t  pid; 
+
+  pid = fork();
+  if ( pid == 0 ) {
+    // Child forks again so it can exit immediately and the parent doesn't wait very long to continue
+    // Meanwhile the grandchild will be adopted by init and won't zombie when it is done
+    pid = fork();
+
+    if ( pid == 0 ) {
+      // Grandchild does the work as it is detached and won't zombie when it exits
+      int priority;
+      char * argv_list[] = {"SendSnapshotText.sh",NULL}; 
+   
+      // drop priority to minimize impact on ZM itself
+      errno = 0;
+      priority = getpriority(PRIO_PROCESS, 0);
+      if ( (priority != -1) || (errno = 0) ) {
+        priority += 5;
+        if ( priority > 19 ) {
+          priority = 19;
+        }
+        setpriority(PRIO_PROCESS, 0, priority);
+      }
+
+      execv( "/usr/local/bin/SendSnapshotText.sh", argv_list ); 
+      exit(0);
+    } else if ( pid == -1 ) {
+      Error("Fork failed");
+    }
+    // exit the child whether we made a grandchild or not so ZM process will continue
+    exit(0);
+  } else if ( pid == -1 ) {
+    Error("Fork failed");
+  } else {
+    // no zombies and we double fork so we only wait for the second fork to complete
+    wait(NULL);
+  }
+  return;
+}
+
 bool Monitor::Analyse() {
   if ( shared_data->last_read_index == shared_data->last_write_index ) {
     // I wonder how often this happens. Maybe if this happens we should sleep or something?
@@ -1572,6 +1616,9 @@ bool Monitor::Analyse() {
                 int pre_index;
                 int pre_event_images = pre_event_count;
 
+		if ( id == 5) {
+		  DoEventExternalNotification();
+		}
                 if ( analysis_fps && pre_event_count ) {
                   // If analysis fps is set,
                   // compute the index for pre event images in the dedicated buffer

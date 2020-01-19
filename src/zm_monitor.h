@@ -528,6 +528,7 @@ public:
    // DetectBlack seems to be unused. Check it on zm_monitor.cpp for more info.
    //unsigned int DetectBlack( const Image &comp_image, Event::StringSet &zoneSet );
   bool CheckSignal( const Image *image );
+  void DoEventExternalNotification();
   bool Analyse();
   void DumpImage( Image *dump_image ) const;
   void TimestampImage( Image *ts_image, const struct timeval *ts_time ) const;
